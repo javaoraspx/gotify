@@ -1,0 +1,47 @@
+name: Build APK with delete confirmation
+
+# 放在你 fork 的仓库里：.github/workflows/build-apk.yml
+# 推上去会自动跑一次；编译好的 APK 在本次运行的 Artifacts 里下载。
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply patch (delete confirmation dialog)
+        run: python3 .github/patch_add_delete_confirm.py
+
+      - name: Show changes
+        run: git --no-pager diff
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gotify-delete-confirm
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
