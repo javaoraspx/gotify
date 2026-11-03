@@ -1,0 +1,12 @@
+<resources>
+    <!-- 只翻译展示用文案；message_layout_value_* / time_format_value_* 是代码里比较用的内部值，不能翻译。 -->
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="theme_default">跟随系统</string>
+
+    <string name="message_layout_entry_normal">标准</string>
+    <string name="message_layout_entry_compact">紧凑</string>
+
+    <string name="time_format_entry_absolute">绝对时间</string>
+    <string name="time_format_entry_relative">相对时间</string>
+</resources>

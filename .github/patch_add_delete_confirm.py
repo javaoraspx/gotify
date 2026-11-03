@@ -1,13 +1,21 @@
-"""Add a confirmation dialog before deleting a message in the Gotify Android app.
+"""Gotify Android local modification for a side-by-side, Chinese-localized build.
 
-Run from the repository root, e.g.:
+Run from the repository root:
     python3 .github/patch_add_delete_confirm.py
 
-It patches two files in place:
+Patches, in place:
   1. app/src/main/kotlin/com/github/gotify/messages/MessagesActivity.kt
-     - the per-item delete button and the swipe-to-delete gesture now both ask first
+     - the per-item delete button and swipe-to-delete now ask for confirmation first
   2. app/src/main/res/values/strings.xml
      - adds the delete_message_confirm string
+  3. app/build.gradle.kts
+     - applicationIdSuffix ".confirm" so it can be installed next to the official app
+     - app_name -> "Gotify CN"
+  4. app/src/main/AndroidManifest.xml
+     - two hardcoded English labels now use string resources (translatable)
+
+The Chinese resources live in app/src/main/res/values-zh/ and are committed as files,
+they do not need patching.
 
 The script is idempotent and fails loudly if the upstream code no longer matches.
 """
@@ -18,6 +26,8 @@ import sys
 
 ACTIVITY = "app/src/main/kotlin/com/github/gotify/messages/MessagesActivity.kt"
 STRINGS = "app/src/main/res/values/strings.xml"
+GRADLE = "app/build.gradle.kts"
+MANIFEST = "app/src/main/AndroidManifest.xml"
 
 OLD_SIGNATURE = "private fun scheduleDeletion(message: Message) {"
 NEW_SIGNATURE = "private fun scheduleDeletion(message: Message, onCancel: () -> Unit = {}) {"
@@ -43,6 +53,9 @@ DIALOG_BODY = [
     "        .show()",
 ]
 
+APPLICATION_ID_LINE = '        applicationId = "com.github.gotify"'
+APP_NAME_LINE = '        resValue("string", "app_name", "Gotify")'
+
 
 def patch_activity(text: str) -> str:
     if "private fun performDeletion(message: Message)" in text:
@@ -61,7 +74,6 @@ def patch_activity(text: str) -> str:
 
     text = text[: match.start()] + dialog_fn + "\n\n" + perform_fn + text[match.end():]
 
-    # Swipe: keep the row visible again when the user cancels the dialog.
     if len(SWIPE_CALL_RE.findall(text)) != 1:
         sys.exit("MessagesActivity.kt: expected exactly one scheduleDeletion(message.message) call")
     text = SWIPE_CALL_RE.sub(
@@ -89,22 +101,56 @@ def patch_strings(text: str) -> str:
     return text.replace(anchor, added, 1)
 
 
+def patch_gradle(text: str) -> str:
+    if 'applicationIdSuffix = ".confirm"' in text:
+        print("build.gradle.kts: already patched, skipping")
+        return text
+    if APPLICATION_ID_LINE not in text:
+        sys.exit("build.gradle.kts: applicationId line not found - upstream changed")
+
+    # Side-by-side install next to the official app (different package id).
+    text = text.replace(
+        APPLICATION_ID_LINE,
+        APPLICATION_ID_LINE + '\n        applicationIdSuffix = ".confirm"',
+        1,
+    )
+    if APP_NAME_LINE in text:
+        text = text.replace(
+            APP_NAME_LINE,
+            '        resValue("string", "app_name", "Gotify CN")',
+            1,
+        )
+    return text
+
+
+def patch_manifest(text: str) -> str:
+    if 'android:label="@string/login"' in text:
+        print("AndroidManifest.xml: already patched, skipping")
+        return text
+    for old, new in (
+        ('android:label="Login"', 'android:label="@string/login"'),
+        ('android:label="Push message"', 'android:label="@string/push_message"'),
+    ):
+        if old not in text:
+            sys.exit(f"AndroidManifest.xml: {old} not found - upstream changed")
+        text = text.replace(old, new, 1)
+    return text
+
+
+def apply(path: str, fn) -> None:
+    file = pathlib.Path(path)
+    before = file.read_text(encoding="utf-8")
+    after = fn(before)
+    if after != before:
+        file.write_text(after, encoding="utf-8")
+        print(f"{path}: patched")
+
+
 def main() -> None:
-    activity = pathlib.Path(ACTIVITY)
-    strings = pathlib.Path(STRINGS)
-
-    before = activity.read_text(encoding="utf-8")
-    after = patch_activity(before)
-    if after != before:
-        activity.write_text(after, encoding="utf-8")
-        print("MessagesActivity.kt: patched")
-
-    before = strings.read_text(encoding="utf-8")
-    after = patch_strings(before)
-    if after != before:
-        strings.write_text(after, encoding="utf-8")
-        print("strings.xml: patched")
-
+    apply(ACTIVITY, patch_activity)
+    apply(STRINGS, patch_strings)
+    apply(GRADLE, patch_gradle)
+    apply(MANIFEST, patch_manifest)
     print("done")
 
 
